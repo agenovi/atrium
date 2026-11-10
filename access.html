@@ -56,7 +56,7 @@ details summary{cursor:pointer;color:#7a5a12}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const sb = supabase.createClient('https://xweuafsvkrjjyailxjsy.supabase.co', 'sb_publishable_RyV4m3as6f91En3b4owEpQ_clHjuNqF');
+const sb = supabase.createClient('https://jtfkpmvievetihhfdmqb.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0ZmtwbXZpZXZldGloaGZkbXFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwODA1MTksImV4cCI6MjA5MTY1NjUxOX0.ozphoaGT7jVKr3NGmqQC1wMj5lp7MvVfdqO2HZWMl6k');
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let DOORS = [], ME = '', openSet = new Set();
@@ -67,18 +67,18 @@ async function start(){
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { location.replace('./'); return; }
   ME = session.user.email.toLowerCase();
-  const { data: owners } = await sb.from('owners').select('email');
+  const { data: owners } = await sb.from('atrium_owners').select('email');
   if (!(owners || []).some(o => o.email.toLowerCase() === ME)) { location.replace('./'); return; }
-  const { data: doors } = await sb.from('doors').select('*').order('sort');
+  const { data: doors } = await sb.from('atrium_doors').select('*').order('sort');
   DOORS = doors || [];
   draw();
 }
 
 async function draw(){
   const [{ data: people }, { data: acc }, { data: log }] = await Promise.all([
-    sb.from('people').select('*').order('greet_name'),
-    sb.from('access').select('*'),
-    sb.from('change_log').select('*').order('at', { ascending: false }).limit(30)
+    sb.from('atrium_people').select('*').order('greet_name'),
+    sb.from('atrium_access').select('*'),
+    sb.from('atrium_log').select('*').order('at', { ascending: false }).limit(30)
   ]);
   const has = (e, k) => (acc || []).find(a => a.email === e && a.door_key === k);
   const sorted = (people || []).slice().sort((a, b) => (a.email === ME ? -1 : b.email === ME ? 1 : a.greet_name.localeCompare(b.greet_name)));
@@ -103,14 +103,14 @@ async function draw(){
   });
   document.querySelectorAll('.chip:not(.you)').forEach(c => c.onclick = async () => {
     const e = c.dataset.e, k = c.dataset.k, on = c.dataset.on === '1';
-    const r = on ? await sb.from('access').delete().eq('email', e).eq('door_key', k)
-                 : await sb.from('access').insert({ email: e, door_key: k });
+    const r = on ? await sb.from('atrium_access').delete().eq('email', e).eq('door_key', k)
+                 : await sb.from('atrium_access').insert({ email: e, door_key: k });
     if (r.error) { say(r.error.message, true); return; }
     say(on ? 'Door taken away.' : 'Door given.');
     draw();
   });
   document.querySelectorAll('.inside input').forEach(i => i.onchange = async () => {
-    const r = await sb.from('access').update({ parts: i.value.trim() || null }).eq('email', i.dataset.e).eq('door_key', i.dataset.k);
+    const r = await sb.from('atrium_access').update({ parts: i.value.trim() || null }).eq('email', i.dataset.e).eq('door_key', i.dataset.k);
     say(r.error ? r.error.message : 'Saved.', !!r.error);
   });
 }
@@ -119,7 +119,7 @@ $('addLink').onclick = () => { $('addForm').style.display = $('addForm').style.d
 $('addBtn').onclick = async () => {
   const e = $('newEmail').value.trim().toLowerCase(), n = $('newName').value.trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || !n) { say('Enter their email and the name for their greeting.', true); return; }
-  const r = await sb.from('people').insert({ email: e, greet_name: n });
+  const r = await sb.from('atrium_people').insert({ email: e, greet_name: n });
   if (r.error) { say(r.error.message, true); return; }
   $('newEmail').value = ''; $('newName').value = ''; $('addForm').style.display = 'none';
   say('Added. Tap the doors they should have.');

@@ -39,8 +39,10 @@ button.ghost{background:#fff;color:#7a5a12}
     <div class="card">
       <label for="email">Your email</label>
       <input id="email" type="email" autocomplete="email" placeholder="name@hassarams.com">
-      <div style="margin-top:14px"><button id="sendBtn">Email me a sign-in link</button></div>
-      <div id="signinMsg" class="msg"></div>
+      <label for="pw" style="margin-top:12px">Password (same as the HR portal)</label>
+      <input id="pw" type="password" autocomplete="current-password" style="width:100%;font-size:16px;padding:10px 12px;border:1px solid #cfc6b2;border-radius:10px">
+      <div style="margin-top:14px"><button id="sendBtn">Sign in</button></div>
+      <div id="signinMsg" class="msg">Forgot it? Use "Forgot your password" on the HR portal sign-in page.</div>
     </div>
   </div>
 
@@ -60,8 +62,8 @@ button.ghost{background:#fff;color:#7a5a12}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const SB_URL = 'https://xweuafsvkrjjyailxjsy.supabase.co';
-const SB_KEY = 'sb_publishable_RyV4m3as6f91En3b4owEpQ_clHjuNqF';
+const SB_URL = 'https://jtfkpmvievetihhfdmqb.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0ZmtwbXZpZXZldGloaGZkbXFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwODA1MTksImV4cCI6MjA5MTY1NjUxOX0.ozphoaGT7jVKr3NGmqQC1wMj5lp7MvVfdqO2HZWMl6k';
 const LOGOS = {rcc:'img/rcc.png', chatlani:'img/chatlani.png', genoglo:'img/genoglo.svg', chummy:'img/chummy.png'};
 const sb = supabase.createClient(SB_URL, SB_KEY);
 const $ = id => document.getElementById(id);
@@ -74,15 +76,16 @@ function hello(name){
 }
 
 $('sendBtn').onclick = async () => {
-  const email = $('email').value.trim().toLowerCase();
+  const email = $('email').value.trim().toLowerCase(), password = $('pw').value;
   const m = $('signinMsg');
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { m.className = 'msg err'; m.textContent = 'Enter your email first.'; return; }
-  $('sendBtn').disabled = true; m.className = 'msg'; m.textContent = 'Sending…';
-  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !password) { m.className = 'msg err'; m.textContent = 'Enter your email and password.'; return; }
+  $('sendBtn').disabled = true; m.className = 'msg'; m.textContent = 'Signing in…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
   $('sendBtn').disabled = false;
-  if (error) { m.className = 'msg err'; m.textContent = 'That did not go through: ' + error.message; return; }
-  m.textContent = 'Check your email and press the link. It opens this page signed in.';
+  if (error) { m.className = 'msg err'; m.textContent = 'That did not work. Check your email and password.'; return; }
+  load();
 };
+$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('sendBtn').click(); });
 
 async function signOut(){ await sb.auth.signOut(); location.replace(location.pathname); }
 $('signout').onclick = signOut; $('signout2').onclick = signOut;
@@ -92,17 +95,17 @@ async function load(){
   if (!session) { show('signin'); return; }
   const email = session.user.email.toLowerCase();
   const [{ data: me }, { data: ownerRows }, { data: acc }, { data: doors }] = await Promise.all([
-    sb.from('people').select('*').eq('email', email).maybeSingle(),
-    sb.from('owners').select('email'),
-    sb.from('access').select('*').eq('email', email),
-    sb.from('doors').select('*').order('sort')
+    sb.from('atrium_people').select('*').eq('email', email).maybeSingle(),
+    sb.from('atrium_owners').select('email'),
+    sb.from('atrium_access').select('*').eq('email', email),
+    sb.from('atrium_doors').select('*').order('sort')
   ]);
   const isOwner = (ownerRows || []).some(r => r.email.toLowerCase() === email);
   const asEmail = isOwner ? (new URLSearchParams(location.search).get('as') || '').toLowerCase() : '';
   if (asEmail && asEmail !== email) {
     const [{ data: them }, { data: theirAcc }] = await Promise.all([
-      sb.from('people').select('*').eq('email', asEmail).maybeSingle(),
-      sb.from('access').select('*').eq('email', asEmail)
+      sb.from('atrium_people').select('*').eq('email', asEmail).maybeSingle(),
+      sb.from('atrium_access').select('*').eq('email', asEmail)
     ]);
     const theirs = (doors || []).filter(d => (theirAcc || []).some(a => a.door_key === d.key));
     $('greet').textContent = hello(them ? them.greet_name : asEmail);
@@ -133,7 +136,6 @@ function drawDoors(list, isOwner){
   }).join('');
 }
 
-sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN') load(); });
 load();
 </script>
 </body>
