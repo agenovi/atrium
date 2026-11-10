@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>The Atrium · Who has access</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f1ea;font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;color:#111}
+.wrap{max-width:760px;margin:0 auto;padding:48px 28px}
+h1{font-family:Didot,"Bodoni 72",Georgia,serif;font-weight:400;font-size:36px;margin:0 0 6px}
+.sub{font-size:14px;color:#666;margin-bottom:24px}
+.back{font-size:13px;color:#7a5a12;text-decoration:underline;cursor:pointer;display:inline-block;margin-bottom:22px}
+.person{background:#fff;border:1px solid #e6dfcf;border-radius:12px;margin-bottom:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;flex-wrap:wrap}
+.who{cursor:pointer}
+.who b{font-size:16px;font-weight:600}
+.who span{display:block;font-size:12px;color:#888;margin-top:2px}
+.chip{display:inline-block;font-size:13px;padding:5px 12px;border-radius:999px;margin:3px 0 3px 6px;cursor:pointer;border:1px solid transparent;user-select:none}
+.chip.on{background:#b8923a;color:#fff}
+.chip.off{background:#f4efe4;color:#a39a86}
+.chip.off:hover{border-color:#d9cba8}
+.chip.you{cursor:default}
+.inside{display:none;border-top:1px solid #f0eadc;padding:12px 16px 16px}
+.inside.open{display:block}
+.inside label{display:block;font-size:12px;color:#7a5a12;margin:10px 0 4px}
+.inside input{width:100%;font-size:14px;padding:8px 10px;border:1px solid #e1d8c4;border-radius:8px}
+.inside .none{font-size:13px;color:#999}
+.add{margin-top:16px;font-size:14px;color:#7a5a12;cursor:pointer;text-decoration:underline;display:inline-block}
+.addform{display:none;background:#fff;border:1px solid #e6dfcf;border-radius:12px;padding:14px 16px;margin-top:10px}
+.addform input{width:100%;font-size:14px;padding:9px 10px;border:1px solid #e1d8c4;border-radius:8px;margin-bottom:8px}
+button{font-size:14px;padding:8px 16px;border-radius:9px;border:1px solid #b8923a;background:#b8923a;color:#fff;cursor:pointer}
+.msg{font-size:13px;color:#555;margin-top:10px;min-height:18px}
+.err{color:#a32d2d}
+details{margin-top:28px;font-size:12px;color:#777}
+details summary{cursor:pointer;color:#7a5a12}
+.log{margin-top:8px;line-height:1.7;background:#fff;border:1px solid #eee6d4;border-radius:10px;padding:10px 12px;max-height:200px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">← Back to my doors</a>
+  <h1>Who has access</h1>
+  <div class="sub">Tap a door to give it or take it away. Tap a name to note what they get inside.</div>
+  <div id="list"></div>
+  <a class="add" id="addLink">+ Add a person</a>
+  <div class="addform" id="addForm">
+    <input id="newEmail" type="email" placeholder="Their email">
+    <input id="newName" type="text" placeholder="Name on their greeting (e.g. Sanj)">
+    <button id="addBtn">Add</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <details><summary>History of changes</summary><div class="log" id="log"></div></details>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const sb = supabase.createClient('https://xweuafsvkrjjyailxjsy.supabase.co', 'sb_publishable_RyV4m3as6f91En3b4owEpQ_clHjuNqF');
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DOORS = [], ME = '', openSet = new Set();
+
+function say(t, bad){ $('msg').className = 'msg' + (bad ? ' err' : ''); $('msg').textContent = t; }
+
+async function start(){
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.replace('./'); return; }
+  ME = session.user.email.toLowerCase();
+  const { data: owners } = await sb.from('owners').select('email');
+  if (!(owners || []).some(o => o.email.toLowerCase() === ME)) { location.replace('./'); return; }
+  const { data: doors } = await sb.from('doors').select('*').order('sort');
+  DOORS = doors || [];
+  draw();
+}
+
+async function draw(){
+  const [{ data: people }, { data: acc }, { data: log }] = await Promise.all([
+    sb.from('people').select('*').order('greet_name'),
+    sb.from('access').select('*'),
+    sb.from('change_log').select('*').order('at', { ascending: false }).limit(30)
+  ]);
+  const has = (e, k) => (acc || []).find(a => a.email === e && a.door_key === k);
+  const sorted = (people || []).slice().sort((a, b) => (a.email === ME ? -1 : b.email === ME ? 1 : a.greet_name.localeCompare(b.greet_name)));
+  $('list').innerHTML = sorted.map(p => {
+    const you = p.email === ME;
+    const chips = DOORS.map(d => {
+      const on = !!has(p.email, d.key);
+      return `<span class="chip ${on ? 'on' : 'off'}${you ? ' you' : ''}" data-e="${esc(p.email)}" data-k="${d.key}" data-on="${on ? 1 : 0}">${esc(d.name)}</span>`;
+    }).join('');
+    const mine = DOORS.filter(d => has(p.email, d.key));
+    const inside = mine.length
+      ? mine.map(d => `<label>${esc(d.name)}: what they get inside</label><input data-e="${esc(p.email)}" data-k="${d.key}" value="${esc(has(p.email, d.key).parts || '')}" placeholder="e.g. Properties only">`).join('')
+      : '<div class="none">No doors yet.</div>';
+    return `<div class="person"><div class="row"><div class="who" data-e="${esc(p.email)}"><b>${esc(p.greet_name)}${you ? ' (you)' : ''}</b><span>${esc(p.email)}${you ? '' : ` · <a href="./?as=${encodeURIComponent(p.email)}" style="color:#7a5a12" onclick="event.stopPropagation()">Preview their page</a>`}</span></div><div>${chips}</div></div>
+      <div class="inside ${openSet.has(p.email) ? 'open' : ''}">${inside}</div></div>`;
+  }).join('');
+  $('log').innerHTML = (log || []).map(l => `${new Date(l.at).toLocaleString()} · ${esc(l.what.slice(0, 140))}`).join('<br>') || 'No changes yet.';
+
+  document.querySelectorAll('.who').forEach(w => w.onclick = () => {
+    const e = w.dataset.e; openSet.has(e) ? openSet.delete(e) : openSet.add(e);
+    w.closest('.person').querySelector('.inside').classList.toggle('open');
+  });
+  document.querySelectorAll('.chip:not(.you)').forEach(c => c.onclick = async () => {
+    const e = c.dataset.e, k = c.dataset.k, on = c.dataset.on === '1';
+    const r = on ? await sb.from('access').delete().eq('email', e).eq('door_key', k)
+                 : await sb.from('access').insert({ email: e, door_key: k });
+    if (r.error) { say(r.error.message, true); return; }
+    say(on ? 'Door taken away.' : 'Door given.');
+    draw();
+  });
+  document.querySelectorAll('.inside input').forEach(i => i.onchange = async () => {
+    const r = await sb.from('access').update({ parts: i.value.trim() || null }).eq('email', i.dataset.e).eq('door_key', i.dataset.k);
+    say(r.error ? r.error.message : 'Saved.', !!r.error);
+  });
+}
+
+$('addLink').onclick = () => { $('addForm').style.display = $('addForm').style.display === 'block' ? 'none' : 'block'; };
+$('addBtn').onclick = async () => {
+  const e = $('newEmail').value.trim().toLowerCase(), n = $('newName').value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || !n) { say('Enter their email and the name for their greeting.', true); return; }
+  const r = await sb.from('people').insert({ email: e, greet_name: n });
+  if (r.error) { say(r.error.message, true); return; }
+  $('newEmail').value = ''; $('newName').value = ''; $('addForm').style.display = 'none';
+  say('Added. Tap the doors they should have.');
+  draw();
+};
+
+start();
+</script>
+</body>
+</html>
